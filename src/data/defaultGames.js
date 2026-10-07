@@ -1,5 +1,22 @@
 export const INITIAL_GAMES = [
   {
+    id: "retro-bowl",
+    title: "Retro Bowl",
+    category: "Sports",
+    description: "Manage your NFL franchise and command the gridiron in this pixel-art football masterpiece! Call plays, complete clutch passes, and lead your team to victory.",
+    iframeUrl: "https://retrobowl.me/g/retro-bowl/index.html",
+    iframeAllow: "fullscreen; autoplay; pointer-lock; gamepad",
+    sandbox: "allow-scripts allow-same-origin allow-forms allow-popups allow-pointer-lock",
+    thumbnail: "🏈",
+    badge: "Hot Pick",
+    rating: 5.0,
+    plays: "520K",
+    controls: "Mouse drag to aim and throw. Click/tap to dive. A/D or Arrow keys to dodge tackles.",
+    author: "New Star Games",
+    aspectRatio: "16/9",
+    tags: ["Sports", "Football", "Retro", "NFL", "Arcade"]
+  },
+  {
     id: "snake",
     title: "Retro Snake Neon",
     category: "Arcade",

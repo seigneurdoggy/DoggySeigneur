@@ -164,7 +164,7 @@ export function renderApp() {
     return (parseInt(b.plays) || 0) - (parseInt(a.plays) || 0);
   });
 
-  const featuredGame = games.find(g => g.id === 'slope') || games[0];
+  const featuredGame = games.find(g => g.id === 'retro-bowl') || games.find(g => g.id === 'slope') || games[0];
 
   root.innerHTML = `
     <div class="min-h-screen bg-[#080c14] text-slate-100 flex flex-col font-sans selection:bg-cyan-500 selection:text-black">
@@ -503,8 +503,9 @@ function renderPlayerModal(game) {
             id="active-game-iframe"
             src="${escapeHtml(resolvedSrc)}"
             title="${escapeHtml(game.title)}"
-            allow="${escapeHtml(game.iframeAllow || 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope')}"
-            sandbox="${escapeHtml(game.sandbox || 'allow-scripts allow-same-origin allow-forms allow-pointer-lock')}"
+            allow="${escapeHtml(game.iframeAllow || 'fullscreen; autoplay; pointer-lock; gamepad')}"
+            sandbox="${escapeHtml(game.sandbox || 'allow-scripts allow-same-origin allow-forms allow-popups allow-pointer-lock')}"
+            loading="eager"
             class="w-full h-full border-none block"
           ></iframe>
         </div>
