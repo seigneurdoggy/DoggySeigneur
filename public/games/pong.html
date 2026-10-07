@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Cyber Pong DX</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body {
+      background: #080c14;
+      color: #38bdf8;
+      font-family: 'Courier New', monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+    .hud {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 600px;
+      max-width: 95vw;
+      padding: 8px 16px;
+      font-size: 18px;
+      font-weight: bold;
+    }
+    .scores { font-size: 28px; letter-spacing: 4px; color: #fff; }
+    #canvas {
+      background: #030712;
+      border: 2px solid #38bdf8;
+      box-shadow: 0 0 25px rgba(56, 189, 248, 0.25);
+      display: block;
+      max-width: 95vw;
+      max-height: 70vh;
+    }
+    .mode-select {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .btn {
+      background: #1e293b;
+      color: #38bdf8;
+      border: 1px solid #38bdf8;
+      padding: 6px 14px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 13px;
+      transition: all 0.15s;
+    }
+    .btn.active, .btn:hover { background: #38bdf8; color: #030712; font-weight: bold; }
+    .instructions {
+      font-size: 11px;
+      color: #64748b;
+      margin-top: 8px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="hud">
+    <div id="player1Label">P1 (YOU)</div>
+    <div class="scores"><span id="p1Score">0</span> : <span id="p2Score">0</span></div>
+    <div id="player2Label">CPU</div>
+  </div>
+
+  <canvas id="canvas" width="640" height="400"></canvas>
+
+  <div class="mode-select">
+    <button class="btn active" id="mode1P">1 Player (vs AI)</button>
+    <button class="btn" id="mode2P">2 Players (Local)</button>
+    <button class="btn" id="resetBtn">Restart Match</button>
+  </div>
+
+  <div class="instructions" id="controlsHint">
+    Player 1: W/S or Arrow Keys (or Drag Mouse/Touch)
+  </div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const p1ScoreEl = document.getElementById('p1Score');
+    const p2ScoreEl = document.getElementById('p2Score');
+    const player2Label = document.getElementById('player2Label');
+    const mode1PBtn = document.getElementById('mode1P');
+    const mode2PBtn = document.getElementById('mode2P');
+    const resetBtn = document.getElementById('resetBtn');
+    const controlsHint = document.getElementById('controlsHint');
+
+    let mode = '1P';
+    let p1Score = 0;
+    let p2Score = 0;
+
+    const PADDLE_W = 12;
+    const PADDLE_H = 75;
+    let p1Y = canvas.height / 2 - PADDLE_H / 2;
+    let p2Y = canvas.height / 2 - PADDLE_H / 2;
+    let p1Speed = 0;
+    let p2Speed = 0;
+
+    let ballX = canvas.width / 2;
+    let ballY = canvas.height / 2;
+    let ballSpeedX = 5;
+    let ballSpeedY = 3;
+    let ballRadius = 7;
+    let particles = [];
+
+    function playTone(freq, dur, type='square') {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.06, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + dur);
+      } catch (e) {}
+    }
+
+    function resetBall(winner) {
+      ballX = canvas.width / 2;
+      ballY = canvas.height / 2;
+      const speed = 5.5;
+      ballSpeedX = (winner === 1 ? speed : -speed);
+      ballSpeedY = (Math.random() * 4 - 2);
+    }
+
+    function addParticles(x, y, color) {
+      for (let i = 0; i < 8; i++) {
+        particles.push({
+          x, y,
+          vx: (Math.random() - 0.5) * 6,
+          vy: (Math.random() - 0.5) * 6,
+          life: 1,
+          color
+        });
+      }
+    }
+
+    const keys = {};
+    window.addEventListener('keydown', e => { keys[e.code] = true; });
+    window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+    canvas.addEventListener('mousemove', e => {
+      const rect = canvas.getBoundingClientRect();
+      const scaleY = canvas.height / rect.height;
+      const mouseY = (e.clientY - rect.top) * scaleY;
+      p1Y = Math.max(0, Math.min(canvas.height - PADDLE_H, mouseY - PADDLE_H / 2));
+    });
+
+    canvas.addEventListener('touchmove', e => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const scaleY = canvas.height / rect.height;
+      const touchY = (e.touches[0].clientY - rect.top) * scaleY;
+      p1Y = Math.max(0, Math.min(canvas.height - PADDLE_H, touchY - PADDLE_H / 2));
+    }, { passive: false });
+
+    mode1PBtn.onclick = () => {
+      mode = '1P';
+      mode1PBtn.classList.add('active');
+      mode2PBtn.classList.remove('active');
+      player2Label.textContent = 'CPU';
+      controlsHint.textContent = 'Player 1: W/S or Arrow Keys / Mouse';
+    };
+
+    mode2PBtn.onclick = () => {
+      mode = '2P';
+      mode2PBtn.classList.add('active');
+      mode1PBtn.classList.remove('active');
+      player2Label.textContent = 'P2';
+      controlsHint.textContent = 'P1: W/S | P2: Up/Down Arrow Keys';
+    };
+
+    resetBtn.onclick = () => {
+      p1Score = 0;
+      p2Score = 0;
+      p1ScoreEl.textContent = '0';
+      p2ScoreEl.textContent = '0';
+      resetBall(1);
+    };
+
+    function update() {
+      // P1 Keyboard Controls
+      if (keys['KeyW'] || (mode === '1P' && keys['ArrowUp'])) p1Y -= 6;
+      if (keys['KeyS'] || (mode === '1P' && keys['ArrowDown'])) p1Y += 6;
+      p1Y = Math.max(0, Math.min(canvas.height - PADDLE_H, p1Y));
+
+      // P2 Controls (AI or 2P)
+      if (mode === '1P') {
+        const targetY = ballY - PADDLE_H / 2;
+        const diff = targetY - p2Y;
+        p2Y += diff * 0.085; // smooth AI with reaction delay
+      } else {
+        if (keys['ArrowUp']) p2Y -= 6;
+        if (keys['ArrowDown']) p2Y += 6;
+      }
+      p2Y = Math.max(0, Math.min(canvas.height - PADDLE_H, p2Y));
+
+      // Ball Movement
+      ballX += ballSpeedX;
+      ballY += ballSpeedY;
+
+      // Top/Bottom walls
+      if (ballY - ballRadius <= 0) {
+        ballY = ballRadius;
+        ballSpeedY = -ballSpeedY;
+        playTone(320, 0.04);
+        addParticles(ballX, ballY, '#38bdf8');
+      } else if (ballY + ballRadius >= canvas.height) {
+        ballY = canvas.height - ballRadius;
+        ballSpeedY = -ballSpeedY;
+        playTone(320, 0.04);
+        addParticles(ballX, ballY, '#38bdf8');
+      }
+
+      // Left paddle hit
+      if (ballX - ballRadius <= 25 + PADDLE_W && ballX + ballRadius >= 25) {
+        if (ballY >= p1Y && ballY <= p1Y + PADDLE_H) {
+          ballX = 25 + PADDLE_W + ballRadius;
+          const hitOffset = (ballY - (p1Y + PADDLE_H / 2)) / (PADDLE_H / 2);
+          ballSpeedX = Math.abs(ballSpeedX) * 1.05;
+          if (ballSpeedX > 14) ballSpeedX = 14;
+          ballSpeedY = hitOffset * 6.5;
+          playTone(520, 0.06);
+          addParticles(ballX, ballY, '#38bdf8');
+        }
+      }
+
+      // Right paddle hit
+      if (ballX + ballRadius >= canvas.width - 25 - PADDLE_W && ballX - ballRadius <= canvas.width - 25) {
+        if (ballY >= p2Y && ballY <= p2Y + PADDLE_H) {
+          ballX = canvas.width - 25 - PADDLE_W - ballRadius;
+          const hitOffset = (ballY - (p2Y + PADDLE_H / 2)) / (PADDLE_H / 2);
+          ballSpeedX = -Math.abs(ballSpeedX) * 1.05;
+          if (ballSpeedX < -14) ballSpeedX = -14;
+          ballSpeedY = hitOffset * 6.5;
+          playTone(520, 0.06);
+          addParticles(ballX, ballY, '#ec4899');
+        }
+      }
+
+      // Left score
+      if (ballX < 0) {
+        p2Score++;
+        p2ScoreEl.textContent = p2Score;
+        playTone(200, 0.25, 'sawtooth');
+        resetBall(2);
+      } else if (ballX > canvas.width) {
+        p1Score++;
+        p1ScoreEl.textContent = p1Score;
+        playTone(600, 0.25, 'triangle');
+        resetBall(1);
+      }
+
+      // Update particles
+      particles.forEach(p => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life -= 0.04;
+      });
+      particles = particles.filter(p => p.life > 0);
+    }
+
+    function draw() {
+      ctx.fillStyle = '#030712';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Center divider
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([8, 8]);
+      ctx.beginPath();
+      ctx.moveTo(canvas.width / 2, 0);
+      ctx.lineTo(canvas.width / 2, canvas.height);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // P1 Paddle (Cyan)
+      ctx.fillStyle = '#38bdf8';
+      ctx.shadowBlur = 12;
+      ctx.shadowColor = '#38bdf8';
+      ctx.fillRect(25, p1Y, PADDLE_W, PADDLE_H);
+
+      // P2 Paddle (Pink)
+      ctx.fillStyle = '#ec4899';
+      ctx.shadowColor = '#ec4899';
+      ctx.fillRect(canvas.width - 25 - PADDLE_W, p2Y, PADDLE_W, PADDLE_H);
+
+      // Ball
+      ctx.fillStyle = '#f8fafc';
+      ctx.shadowBlur = 15;
+      ctx.shadowColor = '#f8fafc';
+      ctx.beginPath();
+      ctx.arc(ballX, ballY, ballRadius, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Particles
+      particles.forEach(p => {
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = p.life;
+        ctx.fillRect(p.x, p.y, 3, 3);
+      });
+      ctx.globalAlpha = 1.0;
+      ctx.shadowBlur = 0;
+    }
+
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+    loop();
+  </script>
+</body>
+</html>

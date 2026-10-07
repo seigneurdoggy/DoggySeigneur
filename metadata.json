@@ -1,0 +1,6 @@
+{
+  "name": "Unblocked Games Hub",
+  "description": "A fast, lightweight unblocked games portal powered by an iframe JSON catalog with favorites, fullscreen theater mode, and tab cloaker.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Connect 4 Arcade</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body {
+      background: #0b0f19;
+      color: #f8fafc;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 10px;
+    }
+    .hud {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 440px;
+      max-width: 95vw;
+      margin-bottom: 12px;
+      padding: 8px 14px;
+      background: #1e293b;
+      border-radius: 8px;
+    }
+    .turn-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: bold;
+    }
+    .turn-disc {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+    }
+    .disc-p1 { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
+    .disc-p2 { background: #eab308; box-shadow: 0 0 8px #eab308; }
+    .board {
+      background: #1d4ed8;
+      padding: 12px;
+      border-radius: 16px;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.5), inset 0 2px 4px rgba(255,255,255,0.3);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      cursor: pointer;
+    }
+    .row { display: flex; gap: 8px; }
+    .slot {
+      width: 46px;
+      height: 46px;
+      background: #0b0f19;
+      border-radius: 50%;
+      box-shadow: inset 0 4px 6px rgba(0,0,0,0.8);
+      position: relative;
+      transition: background 0.15s;
+    }
+    .slot.p1 { background: #ef4444; box-shadow: inset 0 -3px 4px rgba(0,0,0,0.4), 0 0 10px rgba(239, 68, 68, 0.5); }
+    .slot.p2 { background: #eab308; box-shadow: inset 0 -3px 4px rgba(0,0,0,0.4), 0 0 10px rgba(234, 179, 8, 0.5); }
+    .slot.win { transform: scale(1.08); box-shadow: 0 0 15px #38bdf8; }
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .btn {
+      background: #334155;
+      color: #fff;
+      border: 1px solid #475569;
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 13px;
+    }
+    .btn.active { background: #3b82f6; }
+    .status-msg {
+      margin-top: 10px;
+      font-size: 14px;
+      color: #94a3b8;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div class="hud">
+    <div class="turn-badge">
+      <div class="turn-disc disc-p1" id="turnIndicator"></div>
+      <span id="turnText">Player 1's Turn</span>
+    </div>
+    <div style="font-size: 13px;">Scores: <span style="color:#ef4444;" id="p1Score">0</span> - <span style="color:#eab308;" id="p2Score">0</span></div>
+  </div>
+
+  <div class="board" id="board"></div>
+
+  <div class="controls">
+    <button class="btn active" id="btn1P">vs CPU</button>
+    <button class="btn" id="btn2P">2 Players</button>
+    <button class="btn" id="resetBtn">Restart</button>
+  </div>
+
+  <div class="status-msg" id="statusMsg">Click any column to drop a checker</div>
+
+  <script>
+    const ROWS = 6;
+    const COLS = 7;
+    let grid = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+    let turn = 1; // 1: Red, 2: Yellow
+    let mode = '1P'; // 1P or 2P
+    let gameOver = false;
+    let p1Wins = 0, p2Wins = 0;
+
+    const boardEl = document.getElementById('board');
+    const turnIndicator = document.getElementById('turnIndicator');
+    const turnText = document.getElementById('turnText');
+    const statusMsg = document.getElementById('statusMsg');
+    const p1ScoreEl = document.getElementById('p1Score');
+    const p2ScoreEl = document.getElementById('p2Score');
+
+    function renderBoard() {
+      boardEl.innerHTML = '';
+      for (let r = 0; r < ROWS; r++) {
+        const rowEl = document.createElement('div');
+        rowEl.className = 'row';
+        for (let c = 0; c < COLS; c++) {
+          const slot = document.createElement('div');
+          slot.className = 'slot';
+          if (grid[r][c] === 1) slot.classList.add('p1');
+          else if (grid[r][c] === 2) slot.classList.add('p2');
+          slot.dataset.c = c;
+          slot.onclick = () => handleColumnClick(c);
+          rowEl.appendChild(slot);
+        }
+        boardEl.appendChild(rowEl);
+      }
+    }
+
+    function dropDisc(c, player) {
+      for (let r = ROWS - 1; r >= 0; r--) {
+        if (grid[r][c] === 0) {
+          grid[r][c] = player;
+          return r;
+        }
+      }
+      return -1;
+    }
+
+    function checkWin(player) {
+      // Horizontal
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS - 3; c++) {
+          if (grid[r][c] === player && grid[r][c+1] === player && grid[r][c+2] === player && grid[r][c+3] === player) {
+            return true;
+          }
+        }
+      }
+      // Vertical
+      for (let r = 0; r < ROWS - 3; r++) {
+        for (let c = 0; c < COLS; c++) {
+          if (grid[r][c] === player && grid[r+1][c] === player && grid[r+2][c] === player && grid[r+3][c] === player) {
+            return true;
+          }
+        }
+      }
+      // Diagonal down-right
+      for (let r = 0; r < ROWS - 3; r++) {
+        for (let c = 0; c < COLS - 3; c++) {
+          if (grid[r][c] === player && grid[r+1][c+1] === player && grid[r+2][c+2] === player && grid[r+3][c+3] === player) {
+            return true;
+          }
+        }
+      }
+      // Diagonal up-right
+      for (let r = 3; r < ROWS; r++) {
+        for (let c = 0; c < COLS - 3; c++) {
+          if (grid[r][c] === player && grid[r-1][c+1] === player && grid[r-2][c+2] === player && grid[r-3][c+3] === player) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    function isFull() {
+      return grid[0].every(cell => cell !== 0);
+    }
+
+    function handleColumnClick(c) {
+      if (gameOver) return;
+      if (mode === '1P' && turn === 2) return; // CPU turn
+
+      const placedRow = dropDisc(c, turn);
+      if (placedRow === -1) return; // Column full
+
+      renderBoard();
+
+      if (checkWin(turn)) {
+        gameOver = true;
+        statusMsg.textContent = `${turn === 1 ? 'Player 1 (Red)' : (mode === '1P' ? 'CPU' : 'Player 2')} Wins! 🎉`;
+        if (turn === 1) p1Wins++; else p2Wins++;
+        p1ScoreEl.textContent = p1Wins;
+        p2ScoreEl.textContent = p2Wins;
+        return;
+      }
+
+      if (isFull()) {
+        gameOver = true;
+        statusMsg.textContent = "It's a Draw!";
+        return;
+      }
+
+      turn = turn === 1 ? 2 : 1;
+      updateTurnUI();
+
+      if (mode === '1P' && turn === 2 && !gameOver) {
+        setTimeout(cpuMove, 400);
+      }
+    }
+
+    function cpuMove() {
+      if (gameOver) return;
+      // 1. Can CPU win?
+      for (let c = 0; c < COLS; c++) {
+        let tempGrid = JSON.parse(JSON.stringify(grid));
+        for (let r = ROWS - 1; r >= 0; r--) {
+          if (tempGrid[r][c] === 0) {
+            tempGrid[r][c] = 2;
+            break;
+          }
+        }
+        if (checkWinOnGrid(tempGrid, 2)) {
+          executeCpuDrop(c);
+          return;
+        }
+      }
+      // 2. Can Player 1 win next? Block them!
+      for (let c = 0; c < COLS; c++) {
+        let tempGrid = JSON.parse(JSON.stringify(grid));
+        for (let r = ROWS - 1; r >= 0; r--) {
+          if (tempGrid[r][c] === 0) {
+            tempGrid[r][c] = 1;
+            break;
+          }
+        }
+        if (checkWinOnGrid(tempGrid, 1)) {
+          executeCpuDrop(c);
+          return;
+        }
+      }
+      // 3. Prefer center column
+      const colPref = [3, 2, 4, 1, 5, 0, 6];
+      for (let c of colPref) {
+        if (grid[0][c] === 0) {
+          executeCpuDrop(c);
+          return;
+        }
+      }
+    }
+
+    function checkWinOnGrid(g, p) {
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS - 3; c++) {
+          if (g[r][c] === p && g[r][c+1] === p && g[r][c+2] === p && g[r][c+3] === p) return true;
+        }
+      }
+      for (let r = 0; r < ROWS - 3; r++) {
+        for (let c = 0; c < COLS; c++) {
+          if (g[r][c] === p && g[r+1][c] === p && g[r+2][c] === p && g[r+3][c] === p) return true;
+        }
+      }
+      for (let r = 0; r < ROWS - 3; r++) {
+        for (let c = 0; c < COLS - 3; c++) {
+          if (g[r][c] === p && g[r+1][c+1] === p && g[r+2][c+2] === p && g[r+3][c+3] === p) return true;
+        }
+      }
+      for (let r = 3; r < ROWS; r++) {
+        for (let c = 0; c < COLS - 3; c++) {
+          if (g[r][c] === p && g[r-1][c+1] === p && g[r-2][c+2] === p && g[r-3][c+3] === p) return true;
+        }
+      }
+      return false;
+    }
+
+    function executeCpuDrop(c) {
+      dropDisc(c, 2);
+      renderBoard();
+      if (checkWin(2)) {
+        gameOver = true;
+        statusMsg.textContent = 'CPU Wins! 🤖';
+        p2Wins++;
+        p2ScoreEl.textContent = p2Wins;
+        return;
+      }
+      if (isFull()) {
+        gameOver = true;
+        statusMsg.textContent = "It's a Draw!";
+        return;
+      }
+      turn = 1;
+      updateTurnUI();
+    }
+
+    function updateTurnUI() {
+      if (turn === 1) {
+        turnIndicator.className = 'turn-disc disc-p1';
+        turnText.textContent = "Player 1's Turn";
+      } else {
+        turnIndicator.className = 'turn-disc disc-p2';
+        turnText.textContent = mode === '1P' ? "CPU Thinking..." : "Player 2's Turn";
+      }
+    }
+
+    function resetGame() {
+      grid = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+      turn = 1;
+      gameOver = false;
+      statusMsg.textContent = 'Click any column to drop a checker';
+      updateTurnUI();
+      renderBoard();
+    }
+
+    document.getElementById('btn1P').onclick = () => {
+      mode = '1P';
+      document.getElementById('btn1P').classList.add('active');
+      document.getElementById('btn2P').classList.remove('active');
+      resetGame();
+    };
+
+    document.getElementById('btn2P').onclick = () => {
+      mode = '2P';
+      document.getElementById('btn2P').classList.add('active');
+      document.getElementById('btn1P').classList.remove('active');
+      resetGame();
+    };
+
+    document.getElementById('resetBtn').onclick = resetGame;
+
+    renderBoard();
+  </script>
+</body>
+</html>
