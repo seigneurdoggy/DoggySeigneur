@@ -6,9 +6,8 @@
     "description": "Manage your NFL franchise and command the gridiron in this pixel-art football masterpiece! Call plays, complete clutch passes, and lead your team to victory.",
     "iframeUrl": "./games/football.html",
     "mirrors": [
-      { "name": "Self-Hosted (Securly-Proof)", "url": "./games/football.html" },
-      { "name": "RetroBowl.me (Original)", "url": "https://retrobowl.me/g/retro-bowl/index.html" },
-      { "name": "GitHub Pages Mirror", "url": "https://retrobowl-unblocked.github.io/" }
+      { "name": "🏈 Self-Hosted (Securly-Proof)", "url": "./games/football.html" },
+      { "name": "🌐 RetroBowl.me (Original)", "url": "https://retrobowl.me/g/retro-bowl/index.html" }
     ],
     "iframeAllow": "fullscreen; autoplay; pointer-lock; gamepad",
     "sandbox": "allow-scripts allow-same-origin allow-forms allow-popups allow-pointer-lock",

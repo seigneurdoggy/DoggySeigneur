@@ -493,6 +493,7 @@ function renderPlayerModal(game) {
                       ${escapeHtml(m.name)}
                     </option>
                   `).join('')}
+                  <option value="__custom__" class="bg-slate-900 text-amber-300">🔗 Custom Mirror URL...</option>
                 </select>
               </div>
             ` : ''}
@@ -919,7 +920,16 @@ function bindEvents() {
     if (pMirror) {
       pMirror.onchange = (e) => {
         playClickSound();
-        const selectedUrl = e.target.value;
+        let selectedUrl = e.target.value;
+        if (selectedUrl === '__custom__') {
+          const customUrl = prompt('Enter custom mirror or unblocked proxy URL:');
+          if (customUrl && customUrl.trim()) {
+            selectedUrl = customUrl.trim();
+          } else {
+            pMirror.value = activeGame.iframeUrl;
+            return;
+          }
+        }
         activeGame.iframeUrl = selectedUrl;
         const iframe = document.getElementById('active-game-iframe');
         if (iframe) {
