@@ -64,12 +64,15 @@ export default function App() {
   const [isJsonModalOpen, setIsJsonModalOpen] = useState(false);
   const [soundMuted, setSoundMuted] = useState(false);
 
-  // Try fetching fresh /games.json on initial load if available
+  // Try fetching fresh games.json on initial load if available
   useEffect(() => {
-    fetch('/games.json')
+    const base = import.meta.env.BASE_URL || './';
+    const jsonUrl = `${base.endsWith('/') ? base : base + '/'}games.json`;
+
+    fetch(jsonUrl)
       .then((res) => {
         if (res.ok) return res.json();
-        throw new Error('Not found');
+        return fetch('./games.json').then((r) => r.json());
       })
       .then((jsonGames) => {
         // Merge with existing custom games
