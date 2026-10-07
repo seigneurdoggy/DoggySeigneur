@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Retro Football Sim - School Safe</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body {
+      background: #060a12;
+      color: #f8fafc;
+      font-family: 'Courier New', monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+    .hud {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 640px;
+      max-width: 95vw;
+      padding: 8px 16px;
+      background: #0f172a;
+      border: 1px solid #1e293b;
+      border-radius: 8px 8px 0 0;
+      font-size: 13px;
+      font-weight: bold;
+    }
+    .hud .score { font-size: 18px; color: #38bdf8; }
+    .hud .status { color: #f59e0b; }
+    #canvas {
+      background: #236b28;
+      border: 2px solid #38bdf8;
+      box-shadow: 0 0 25px rgba(56, 189, 248, 0.2);
+      display: block;
+      max-width: 95vw;
+      max-height: 72vh;
+    }
+    .controls-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 640px;
+      max-width: 95vw;
+      padding: 8px 12px;
+      background: #0f172a;
+      border: 1px solid #1e293b;
+      border-radius: 0 0 8px 8px;
+      font-size: 11px;
+      color: #94a3b8;
+    }
+    .btn {
+      background: #1e293b;
+      color: #38bdf8;
+      border: 1px solid #38bdf8;
+      padding: 4px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: bold;
+    }
+    .btn:hover { background: #38bdf8; color: #020617; }
+  </style>
+</head>
+<body>
+  <div class="hud">
+    <div>HOME <span class="score" id="homeScore">0</span> - <span class="score" id="awayScore">0</span> AWAY</div>
+    <div class="status" id="downDist">1ST & 10 • YARD 20</div>
+    <div>QTR <span id="qtr">1</span> • <span id="clock">2:00</span></div>
+  </div>
+
+  <canvas id="canvas" width="640" height="400"></canvas>
+
+  <div class="controls-bar">
+    <div>Space / Click: Snap • Drag Mouse/Touch: Aim Pass • Arrows / WASD: Run/Dodge • D: Dive</div>
+    <button class="btn" id="newPlayBtn">New Drive</button>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const homeScoreEl = document.getElementById('homeScore');
+    const awayScoreEl = document.getElementById('awayScore');
+    const downDistEl = document.getElementById('downDist');
+    const qtrEl = document.getElementById('qtr');
+    const clockEl = document.getElementById('clock');
+    const newPlayBtn = document.getElementById('newPlayBtn');
+
+    // Audio effects via Web Audio API (zero external requests)
+    function playAudio(type) {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        if (type === 'whistle') {
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(2200, audioCtx.currentTime);
+          osc.frequency.setValueAtTime(2400, audioCtx.currentTime + 0.1);
+          gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.35);
+          osc.connect(gain); gain.connect(audioCtx.destination);
+          osc.start(); osc.stop(audioCtx.currentTime + 0.35);
+        } else if (type === 'throw') {
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(650, audioCtx.currentTime + 0.15);
+          gain.gain.setValueAtTime(0.06, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+          osc.connect(gain); gain.connect(audioCtx.destination);
+          osc.start(); osc.stop(audioCtx.currentTime + 0.15);
+        } else if (type === 'tackle') {
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(140, audioCtx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(60, audioCtx.currentTime + 0.2);
+          gain.gain.setValueAtTime(0.09, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
+          osc.connect(gain); gain.connect(audioCtx.destination);
+          osc.start(); osc.stop(audioCtx.currentTime + 0.2);
+        } else if (type === 'cheer') {
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.4);
+          gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.6);
+          osc.connect(gain); gain.connect(audioCtx.destination);
+          osc.start(); osc.stop(audioCtx.currentTime + 0.6);
+        }
+      } catch (e) {}
+    }
+
+    // Game state
+    let homeScore = 0;
+    let awayScore = 0;
+    let down = 1;
+    let yardsToGo = 10;
+    let ballYard = 20; // 0 to 100 (100 is touchdown)
+    let playState = 'presnap'; // presnap, play, passing, tackle, touchdown
+    let quarter = 1;
+    let clockSeconds = 120;
+
+    // Field coordinates
+    let fieldScrollX = 0;
+    const FIELD_LENGTH = 1200; // in canvas units
+
+    // Players
+    let qb = { x: 120, y: 200, vx: 0, vy: 0, hasBall: true, speed: 2.8 };
+    let ball = { x: 120, y: 200, targetX: 0, targetY: 0, vx: 0, vy: 0, inAir: false, height: 0 };
+    let receivers = [];
+    let defenders = [];
+    let ballCarrier = null;
+
+    // Aiming pass
+    let isAiming = false;
+    let aimStart = { x: 0, y: 0 };
+    let aimCurrent = { x: 0, y: 0 };
+
+    function initPlay() {
+      playState = 'presnap';
+      qb = { x: 140, y: 200, vx: 0, vy: 0, hasBall: true, speed: 2.8 };
+      ball = { x: 140, y: 200, vx: 0, vy: 0, inAir: false, height: 0 };
+      ballCarrier = qb;
+      isAiming = false;
+
+      // 3 Offense Receivers
+      receivers = [
+        { id: 1, x: 170, y: 80, vx: 3.2, vy: 0, route: 'streak', hasBall: false },
+        { id: 2, x: 170, y: 200, vx: 3.0, vy: -0.6, route: 'slant', hasBall: false },
+        { id: 3, x: 170, y: 320, vx: 3.4, vy: 0, route: 'post', hasBall: false }
+      ];
+
+      // 4 Defense Players
+      defenders = [
+        { id: 1, x: 280, y: 90, vx: -2.3, vy: 0, speed: 2.4, target: null },
+        { id: 2, x: 260, y: 190, vx: -2.5, vy: 0, speed: 2.5, target: null },
+        { id: 3, x: 260, y: 220, vx: -2.5, vy: 0, speed: 2.5, target: null },
+        { id: 4, x: 300, y: 310, vx: -2.3, vy: 0, speed: 2.4, target: null }
+      ];
+
+      updateHud();
+    }
+
+    function snapBall() {
+      if (playState === 'presnap') {
+        playState = 'play';
+        playAudio('whistle');
+      }
+    }
+
+    function throwBall(targetX, targetY) {
+      if (playState !== 'play' || !qb.hasBall) return;
+      playState = 'passing';
+      qb.hasBall = false;
+      ball.inAir = true;
+      ball.x = qb.x;
+      ball.y = qb.y;
+      ball.height = 0;
+
+      const dx = targetX - qb.x;
+      const dy = targetY - qb.y;
+      const dist = Math.hypot(dx, dy);
+      const speed = 7.5;
+      ball.vx = (dx / dist) * speed;
+      ball.vy = (dy / dist) * speed;
+      ball.targetX = targetX;
+      ball.targetY = targetY;
+
+      playAudio('throw');
+    }
+
+    function updateHud() {
+      homeScoreEl.textContent = homeScore;
+      awayScoreEl.textContent = awayScore;
+      const downStr = ['1ST', '2ND', '3RD', '4TH'][down - 1] || '1ST';
+      downDistEl.textContent = `${downStr} & ${yardsToGo} • YARD ${ballYard}`;
+      qtrEl.textContent = quarter;
+      const mins = Math.floor(clockSeconds / 60);
+      const secs = String(clockSeconds % 60).padStart(2, '0');
+      clockEl.textContent = `${mins}:${secs}`;
+    }
+
+    // Input handlers
+    const keys = {};
+    window.addEventListener('keydown', e => {
+      keys[e.code] = true;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (playState === 'presnap') snapBall();
+        else if (playState === 'tackle' || playState === 'touchdown') initPlay();
+      }
+      if (e.code === 'KeyD' && ballCarrier) {
+        // Dive for extra yards
+        ballCarrier.x += 16;
+        playAudio('tackle');
+      }
+    });
+    window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+    canvas.addEventListener('mousedown', e => {
+      const rect = canvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+      const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+
+      if (playState === 'presnap') {
+        snapBall();
+      } else if (playState === 'play' && qb.hasBall) {
+        isAiming = true;
+        aimStart = { x: qb.x, y: qb.y };
+        aimCurrent = { x, y };
+      } else if (playState === 'tackle' || playState === 'touchdown') {
+        initPlay();
+      }
+    });
+
+    canvas.addEventListener('mousemove', e => {
+      if (isAiming) {
+        const rect = canvas.getBoundingClientRect();
+        aimCurrent.x = (e.clientX - rect.left) * (canvas.width / rect.width);
+        aimCurrent.y = (e.clientY - rect.top) * (canvas.height / rect.height);
+      }
+    });
+
+    canvas.addEventListener('mouseup', e => {
+      if (isAiming) {
+        isAiming = false;
+        throwBall(aimCurrent.x, aimCurrent.y);
+      }
+    });
+
+    newPlayBtn.onclick = initPlay;
+
+    // Game loop logic
+    function update() {
+      if (playState === 'play' || playState === 'passing') {
+        // QB Movement if holding ball
+        if (qb.hasBall) {
+          if (keys['ArrowUp'] || keys['KeyW']) qb.y -= qb.speed;
+          if (keys['ArrowDown'] || keys['KeyS']) qb.y += qb.speed;
+          if (keys['ArrowLeft'] || keys['KeyA']) qb.x -= qb.speed;
+          if (keys['ArrowRight'] || keys['KeyD']) qb.x += qb.speed;
+          qb.y = Math.max(50, Math.min(350, qb.y));
+          qb.x = Math.max(50, Math.min(220, qb.x));
+        }
+
+        // Receivers route running
+        receivers.forEach(r => {
+          if (!r.hasBall) {
+            r.x += r.vx;
+            r.y += r.vy;
+            if (r.route === 'slant' && r.x > 320) r.vy = 0.8;
+          } else {
+            // Ball carrier running!
+            if (keys['ArrowUp'] || keys['KeyW']) r.y -= 2.6;
+            if (keys['ArrowDown'] || keys['KeyS']) r.y += 2.6;
+            if (keys['ArrowLeft'] || keys['KeyA']) r.x -= 2.0;
+            if (keys['ArrowRight'] || keys['KeyD']) r.x += 3.2;
+            else r.x += 2.6;
+          }
+          r.y = Math.max(45, Math.min(355, r.y));
+        });
+
+        // Ball flight
+        if (ball.inAir) {
+          ball.x += ball.vx;
+          ball.y += ball.vy;
+
+          // Check pass catch
+          receivers.forEach(r => {
+            if (Math.hypot(ball.x - r.x, ball.y - r.y) < 22) {
+              ball.inAir = false;
+              r.hasBall = true;
+              ballCarrier = r;
+              playState = 'play';
+              playAudio('cheer');
+            }
+          });
+
+          // Incomplete pass if ball goes off field
+          if (ball.x > canvas.width || ball.x < 0 || ball.y < 0 || ball.y > canvas.height) {
+            ball.inAir = false;
+            endPlay(0, false);
+          }
+        }
+
+        // Defenders chase ball carrier or QB
+        const targetObj = ballCarrier || (ball.inAir ? ball : qb);
+        defenders.forEach(d => {
+          const dx = targetObj.x - d.x;
+          const dy = targetObj.y - d.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist > 5) {
+            d.x += (dx / dist) * d.speed;
+            d.y += (dy / dist) * d.speed;
+          }
+
+          // Tackle check
+          if (ballCarrier && Math.hypot(d.x - ballCarrier.x, d.y - ballCarrier.y) < 16) {
+            const yardsGained = Math.floor((ballCarrier.x - 140) / 10);
+            endPlay(yardsGained, true);
+          }
+        });
+
+        // Touchdown check
+        if (ballCarrier && ballCarrier.x > canvas.width - 50) {
+          playState = 'touchdown';
+          homeScore += 7;
+          ballYard = 20;
+          down = 1;
+          yardsToGo = 10;
+          playAudio('cheer');
+          updateHud();
+        }
+      }
+    }
+
+    function endPlay(yardsGained, tackled) {
+      playState = 'tackle';
+      playAudio('tackle');
+
+      ballYard = Math.min(99, Math.max(1, ballYard + Math.max(-5, yardsGained)));
+      if (yardsGained >= yardsToGo) {
+        down = 1;
+        yardsToGo = 10;
+      } else {
+        down++;
+        yardsToGo -= yardsGained;
+        if (down > 4) {
+          // Turnover on downs!
+          down = 1;
+          yardsToGo = 10;
+          awayScore += 3;
+          ballYard = 20;
+        }
+      }
+      updateHud();
+    }
+
+    // Drawing
+    function draw() {
+      // Grass background
+      ctx.fillStyle = '#236b28';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Yard lines (every 40px = 5 yards)
+      ctx.strokeStyle = '#43944a';
+      ctx.lineWidth = 2;
+      for (let x = 0; x < canvas.width; x += 40) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+      }
+
+      // End zone right
+      ctx.fillStyle = '#1e40af';
+      ctx.fillRect(canvas.width - 50, 0, 50, canvas.height);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 16px Courier New';
+      ctx.save();
+      ctx.translate(canvas.width - 25, 200);
+      ctx.rotate(-Math.PI / 2);
+      ctx.textAlign = 'center';
+      ctx.fillText('ENDZONE', 0, 5);
+      ctx.restore();
+
+      // Line of Scrimmage & First Down Line
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(140, 0);
+      ctx.lineTo(140, canvas.height);
+      ctx.stroke();
+
+      ctx.strokeStyle = '#facc15';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(140 + yardsToGo * 10, 0);
+      ctx.lineTo(140 + yardsToGo * 10, canvas.height);
+      ctx.stroke();
+
+      // Draw Pass Aim Trajectory Line
+      if (isAiming) {
+        ctx.strokeStyle = '#facc15';
+        ctx.setLineDash([6, 6]);
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(qb.x, qb.y);
+        ctx.lineTo(aimCurrent.x, aimCurrent.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Target crosshair
+        ctx.fillStyle = '#ef4444';
+        ctx.beginPath();
+        ctx.arc(aimCurrent.x, aimCurrent.y, 6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Draw Receivers (Blue Jerseys)
+      receivers.forEach(r => {
+        ctx.fillStyle = '#2563eb';
+        ctx.beginPath();
+        ctx.arc(r.x, r.y, 9, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(r.x + 3, r.y - 3, 4, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      // Draw Defenders (Red Jerseys)
+      defenders.forEach(d => {
+        ctx.fillStyle = '#dc2626';
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, 9, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(d.x - 3, d.y - 3, 4, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      // Draw QB
+      ctx.fillStyle = '#1d4ed8';
+      ctx.beginPath();
+      ctx.arc(qb.x, qb.y, 11, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#facc15';
+      ctx.beginPath();
+      ctx.arc(qb.x, qb.y - 3, 5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Draw Ball
+      if (ball.inAir) {
+        ctx.fillStyle = '#92400e';
+        ctx.beginPath();
+        ctx.ellipse(ball.x, ball.y, 7, 4, Math.atan2(ball.vy, ball.vx), 0, Math.PI * 2);
+        ctx.fill();
+      } else if (ballCarrier) {
+        ctx.fillStyle = '#92400e';
+        ctx.beginPath();
+        ctx.ellipse(ballCarrier.x + 5, ballCarrier.y + 4, 5, 3, 0.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Overlays
+      if (playState === 'presnap') {
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
+        ctx.fillRect(canvas.width / 2 - 160, 20, 320, 45);
+        ctx.fillStyle = '#38bdf8';
+        ctx.font = 'bold 15px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText('PRESS SPACE OR CLICK TO SNAP', canvas.width / 2, 48);
+      } else if (playState === 'touchdown') {
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+        ctx.fillRect(canvas.width / 2 - 180, 140, 360, 110);
+        ctx.fillStyle = '#facc15';
+        ctx.font = 'bold 28px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText('TOUCHDOWN! 🎉', canvas.width / 2, 185);
+        ctx.fillStyle = '#38bdf8';
+        ctx.font = '14px Courier New';
+        ctx.fillText('Press Space for Next Drive', canvas.width / 2, 220);
+      } else if (playState === 'tackle') {
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+        ctx.fillRect(canvas.width / 2 - 170, 140, 340, 90);
+        ctx.fillStyle = '#f87171';
+        ctx.font = 'bold 20px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText('TACKLED / PLAY OVER', canvas.width / 2, 175);
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '13px Courier New';
+        ctx.fillText('Press Space for Next Down', canvas.width / 2, 205);
+      }
+    }
+
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    initPlay();
+    loop();
+  </script>
+</body>
+</html>

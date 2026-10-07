@@ -4,15 +4,20 @@ export const INITIAL_GAMES = [
     title: "Retro Bowl",
     category: "Sports",
     description: "Manage your NFL franchise and command the gridiron in this pixel-art football masterpiece! Call plays, complete clutch passes, and lead your team to victory.",
-    iframeUrl: "https://retrobowl.me/g/retro-bowl/index.html",
+    iframeUrl: "./games/football.html",
+    mirrors: [
+      { name: "Self-Hosted (Securly-Proof)", url: "./games/football.html" },
+      { name: "RetroBowl.me (Original)", url: "https://retrobowl.me/g/retro-bowl/index.html" },
+      { name: "GitHub Pages Mirror", url: "https://retrobowl-unblocked.github.io/" }
+    ],
     iframeAllow: "fullscreen; autoplay; pointer-lock; gamepad",
     sandbox: "allow-scripts allow-same-origin allow-forms allow-popups allow-pointer-lock",
     thumbnail: "🏈",
-    badge: "Hot Pick",
+    badge: "Securly-Proof",
     rating: 5.0,
     plays: "520K",
     controls: "Mouse drag to aim and throw. Click/tap to dive. A/D or Arrow keys to dodge tackles.",
-    author: "New Star Games",
+    author: "New Star Games / Gridiron Tribute",
     aspectRatio: "16/9",
     tags: ["Sports", "Football", "Retro", "NFL", "Arcade"]
   },

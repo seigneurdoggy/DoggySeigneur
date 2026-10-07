@@ -11,6 +11,15 @@ let games = (() => {
   return INITIAL_GAMES;
 })();
 
+// Sync defaults if a known game (like retro-bowl) has updated mirrors/URL
+INITIAL_GAMES.forEach(initial => {
+  const existingIdx = games.findIndex(g => g.id === initial.id);
+  if (existingIdx !== -1 && initial.mirrors && (!games[existingIdx].mirrors || games[existingIdx].iframeUrl.includes('retrobowl.me'))) {
+    games[existingIdx] = { ...initial, isCustom: false };
+    saveGames();
+  }
+});
+
 let favorites = (() => {
   try {
     const saved = localStorage.getItem('unblocked_hub_favs');
@@ -475,6 +484,18 @@ function renderPlayerModal(game) {
           </div>
 
           <div class="flex items-center gap-1.5 flex-shrink-0">
+            ${game.mirrors && game.mirrors.length > 0 ? `
+              <div class="flex items-center gap-1 bg-slate-800/90 border border-slate-700 rounded-lg px-2 py-1 mr-1">
+                <span class="text-[10px] text-slate-400 font-bold uppercase hidden sm:inline">Mirror:</span>
+                <select id="player-mirror-select" class="bg-transparent text-cyan-300 text-xs font-semibold focus:outline-none cursor-pointer">
+                  ${game.mirrors.map(m => `
+                    <option value="${escapeHtml(m.url)}" ${resolveUrl(game.iframeUrl) === resolveUrl(m.url) ? 'selected' : ''} class="bg-slate-900 text-slate-200">
+                      ${escapeHtml(m.name)}
+                    </option>
+                  `).join('')}
+                </select>
+              </div>
+            ` : ''}
             <button id="player-fav-btn" class="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition" title="Favorite">
               ${isFav ? icons.heartFilled : icons.heart}
             </button>
@@ -893,6 +914,19 @@ function bindEvents() {
 
     const pFav = document.getElementById('player-fav-btn');
     if (pFav) pFav.onclick = () => toggleFavorite(activeGame.id);
+
+    const pMirror = document.getElementById('player-mirror-select');
+    if (pMirror) {
+      pMirror.onchange = (e) => {
+        playClickSound();
+        const selectedUrl = e.target.value;
+        activeGame.iframeUrl = selectedUrl;
+        const iframe = document.getElementById('active-game-iframe');
+        if (iframe) {
+          iframe.src = resolveUrl(selectedUrl);
+        }
+      };
+    }
   }
 
   // Add Game Modal Form
